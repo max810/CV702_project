@@ -65,9 +65,9 @@ def warpTwoImages(img1, img2, H):
     return result
 
 
-def stitch_two_images(queryImg, trainImg, matching_mode):
-    queryImg = cv2.imread('image_pairs/image pairs_03_01.jpg')
-    trainImg = cv2.imread('image_pairs/image pairs_03_02.jpg')
+def stitch_two_images(queryPath, trainPath, matching_mode):
+    queryImg = cv2.imread(queryPath)
+    trainImg = cv2.imread(trainPath)
 
     if matching_mode == 'baseline':
         points1, desc1 = extract_points(queryImg)
@@ -101,7 +101,7 @@ if __name__ == '__main__':
         help='baseline/superglue')
     opt = parser.parse_args()
 
-    queryPath = 'image_pairs/image pairs_03_01.jpg'
-    trainPath = 'image_pairs/image pairs_03_02.jpg'
+    queryPath = 'image_pairs/image pairs_02_01.jpg'
+    trainPath = 'image_pairs/image pairs_02_02.jpg'
 
     stitch_two_images(queryPath, trainPath, opt.matching_mode)
