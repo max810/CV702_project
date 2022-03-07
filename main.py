@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse
+import SuperGluePretrainedNetwork.SuperGlueRun as SuperGlueRun
 
 MIN_MATCH_COUNT = 10
 
@@ -63,11 +65,18 @@ def warpTwoImages(img1, img2, H):
     return result
 
 
-def stitch_two_images(queryImg, trainImg):
-    points1, desc1 = extract_points(queryImg)
-    points2, desc2 = extract_points(trainImg)
+def stitch_two_images(queryImg, trainImg, matching_mode):
+    queryImg = cv2.imread('image_pairs/image pairs_03_01.jpg')
+    trainImg = cv2.imread('image_pairs/image pairs_03_02.jpg')
 
-    points1, points2 = match_points(points1, points2, desc1, desc2)
+    if matching_mode == 'baseline':
+        points1, desc1 = extract_points(queryImg)
+        points2, desc2 = extract_points(trainImg)
+
+        points1, points2 = match_points(points1, points2, desc1, desc2)
+    elif matching_mode == 'superglue':
+        input_pairs = [[queryPath, trainPath]]
+        points1, points2 = SuperGlueRun.match_pairs(input_pairs=input_pairs, output_dir='./output_keypoints', superglue="outdoor", max_keypoints=2048, resize_float=True, resize=[-1])
 
     # TODO: try different algorithms here (supports RANSAC, LMEDS and RHO)
 
@@ -84,7 +93,15 @@ def stitch_two_images(queryImg, trainImg):
 
 
 if __name__ == '__main__':
-    queryImg = cv2.imread('image_pairs/image pairs_03_01.jpg')
-    trainImg = cv2.imread('image_pairs/image pairs_03_02.jpg')
+    parser = argparse.ArgumentParser(
+        description='Image stitching',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument(
+        '--matching_mode', type=str, default='baseline',
+        help='baseline/superglue')
+    opt = parser.parse_args()
 
-    stitch_two_images(queryImg, trainImg)
+    queryPath = 'image_pairs/image pairs_03_01.jpg'
+    trainPath = 'image_pairs/image pairs_03_02.jpg'
+
+    stitch_two_images(queryPath, trainPath, opt.matching_mode)
