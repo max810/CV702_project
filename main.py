@@ -60,6 +60,8 @@ def warpTwoImages(img1, img2, H, blending_func=None):
     Ht = np.array([[1, 0, t[0]], [0, 1, t[1]], [0, 0, 1]])  # translate
 
     # Just image 2
+    filled_result = cv2.warpPerspective(img2, Ht.dot(H), (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST,
+                                        borderMode=cv2.BORDER_REPLICATE)
     result = cv2.warpPerspective(img2, Ht.dot(H), (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST)
     # cv2.imwrite(
     #     'second_only.png', result
@@ -77,6 +79,9 @@ def warpTwoImages(img1, img2, H, blending_func=None):
         y0, y1 = min(y), max(y)
 
         # EXCLUSIVE
+        filled_intersection_region = filled_result[y0: y1 + 1, x0: x1 + 1]
+        result[y0: y1 + 1, x0: x1 + 1] = filled_intersection_region
+
         result = blending_func(img1_full, result, (y0, y1 + 1, x0, x1 + 1))
 
         # cv2.rectangle(result, (x0, y0), (x1, y1), (0, 0, 255), 1)
@@ -189,6 +194,6 @@ if __name__ == '__main__':
     result = stitch_two_images(queryPath, trainPath, opt.matching_mode)
 
     cv2.imwrite(
-        '04_feathering.png',
+        '04_feathering_special.png',
         result
     )
