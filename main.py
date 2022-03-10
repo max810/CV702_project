@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 import argparse
 import SuperGluePretrainedNetwork.SuperGlueRun as SuperGlueRun
 
@@ -18,8 +17,8 @@ def extract_points(img):
 
 
 def match_points(kps1, kps2, desc1, desc2):
-    FLANN_INDEX_KDTREE = 1
-    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+    # FLANN - fast library for approximate nearest neighbours
+    index_params = dict(algorithm=cv2.DESCRIPTOR_MATCHER_FLANNBASED, trees=5)
     search_params = dict(checks=50)
 
     flann = cv2.FlannBasedMatcher(index_params, search_params)
@@ -40,8 +39,7 @@ def match_points(kps1, kps2, desc1, desc2):
     return np.array(valid_points1), np.array(valid_points2)
 
 
-def warpTwoImages(img1, img2, H, blending_func=None):
-    # https://stackoverflow.com/a/20355545
+def warp_images(img1, img2, H, blending_func=None):
     # just need to calculate the size properly so that both images fit on the screen
     h1, w1 = img1.shape[:2]
     h2, w2 = img2.shape[:2]
@@ -63,9 +61,6 @@ def warpTwoImages(img1, img2, H, blending_func=None):
     filled_result = cv2.warpPerspective(img2, Ht.dot(H), (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST,
                                         borderMode=cv2.BORDER_REPLICATE)
     result = cv2.warpPerspective(img2, Ht.dot(H), (xmax - xmin, ymax - ymin), flags=cv2.INTER_NEAREST)
-    # cv2.imwrite(
-    #     'second_only.png', result
-    # )
 
     if blending_func is None:
         result[t[1]:h1 + t[1], t[0]:w1 + t[0]] = img1
@@ -80,11 +75,11 @@ def warpTwoImages(img1, img2, H, blending_func=None):
 
         # EXCLUSIVE
         filled_intersection_region = filled_result[y0: y1 + 1, x0: x1 + 1]
+
+        # filling the gaps in the intersection regions with replicated pixels from 2nd image
         result[y0: y1 + 1, x0: x1 + 1] = filled_intersection_region
 
         result = blending_func(img1_full, result, (y0, y1 + 1, x0, x1 + 1))
-
-        # cv2.rectangle(result, (x0, y0), (x1, y1), (0, 0, 255), 1)
 
     # both images
     return result
@@ -148,35 +143,27 @@ def apply_feathering(img1_full, result_img, overlapping_region_coords):
     return result_img
 
 
-def stitch_two_images(queryPath, trainPath, matching_mode):
-    queryImg = cv2.imread(queryPath)
-    trainImg = cv2.imread(trainPath)
+def stitch_two_images(query_path, train_path, matching_mode, use_feathering=True):
+    query_img = cv2.imread(query_path)
+    train_img = cv2.imread(train_path)
 
     if matching_mode == 'baseline':
-        points1, desc1 = extract_points(queryImg)
-        points2, desc2 = extract_points(trainImg)
+        points1, desc1 = extract_points(query_img)
+        points2, desc2 = extract_points(train_img)
 
         points1, points2 = match_points(points1, points2, desc1, desc2)
     elif matching_mode == 'superglue':
-        input_pairs = [[queryPath, trainPath]]
+        input_pairs = [[query_path, train_path]]
         points1, points2 = SuperGlueRun.match_pairs(input_pairs=input_pairs, output_dir='./output_keypoints',
                                                     superglue="outdoor", max_keypoints=2048, resize_float=True,
                                                     resize=[-1])
+    else:
+        raise ValueError(f"Unknown feature extraction method: {matching_mode}")
 
-    # TODO: try different algorithms here (supports RANSAC, LMEDS and RHO)
-
-    # https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html#ga4abc2ece9fab9398f2e560d53c8c9780
     projective_matrix, _mask = cv2.findHomography(points2, points1, cv2.RANSAC, 0.5, maxIters=1000)
+    blending_func = apply_feathering if use_feathering else None
 
-    result = warpTwoImages(queryImg, trainImg, projective_matrix, blending_func=apply_feathering)
-
-    # result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
-
-    # plt.figure(figsize=(20, 10))
-    # plt.imshow(result)
-    # plt.show()
-    return result
-    # cv2.imwrite('feathering.png', result)
+    return warp_images(query_img, train_img, projective_matrix, blending_func=blending_func)
 
 
 if __name__ == '__main__':
@@ -184,16 +171,30 @@ if __name__ == '__main__':
         description='Image stitching',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
-        '--matching_mode', type=str, default='baseline',
-        help='baseline/superglue')
-    opt = parser.parse_args()
+        '--matching_mode', type=str, default='baseline', choices=['baseline', 'superglue']
+    )
+    parser.add_argument(
+        'img1', type=str, help='Path to image 1.',
+    )
+    parser.add_argument(
+        'img2', type=str, help='Path to image 2.',
+    )
+    parser.add_argument(
+        '-o', '--output', type=str, required=True, help='Path where the output panorama will be saved.',
+        metavar='OUTPUT_IMAGE_PATH'
+    )
+    parser.add_argument(
+        '--feathering', action=argparse.BooleanOptionalAction, default=True,
+        help='Whether to apply feathering blending after stitching.',
+    )
+    args = parser.parse_args()
 
-    queryPath = 'image_pairs/image pairs_04_01.jpg'
-    trainPath = 'image_pairs/image pairs_04_02.jpg'
+    query_path = args.img1  # 'image_pairs/image pairs_04_01.jpg'
+    train_path = args.img2  # 'image_pairs/image pairs_04_02.jpg'
 
-    result = stitch_two_images(queryPath, trainPath, opt.matching_mode)
+    result = stitch_two_images(query_path, train_path, args.matching_mode, args.feathering)
 
     cv2.imwrite(
-        '04_feathering_special.png',
+        args.output,  # '04_feathering_special.png',
         result
     )
